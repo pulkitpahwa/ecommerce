@@ -7,38 +7,23 @@ from django.core.cache import cache as django_cache
 from django.core.cache.backends.base import DEFAULT_TIMEOUT
 
 
+class _RequestCache(threading.local):
+    """
+    A thread-local for storing the per-request cache.
+    """
+
+    def __init__(self):
+        super(_RequestCache, self).__init__()
+        self.data = {}
+
+    def clear(self):
+        self.data = {}
+
+
 class TieredCache(object):
     """
-    The first tier is a request cache that is tied to the life of a
-    given request. The second tier is the Django cache -- e.g. the
-    "default" entry in settings.CACHES, typically backed by memcached.
-
-    Some baseline rules:
-
-    1. Treat it as a global namespace, like any other cache. The per-request
-       local cache is only going to live for the lifetime of one request, but
-       the backing cache is going to be something like Memcached, where key
-       collision is possible.
-
-    2. Timeouts are ignored for the purposes of the in-memory request cache,
-       but do apply to the Django cache. One consequence of this is that
-       sending an explicit timeout of 0 in `set` or `add` will cause that
-       item to only be cached across the duration of the request and will not
-       cause a write to the remote cache.
-
+    A two tiered caching object with a request cache backed by a django cache.
     """
-    class _RequestCache(threading.local):
-        """
-        A thread-local for storing the per-request cache.
-        """
-
-        def __init__(self):
-            super(TieredCache._RequestCache, self).__init__()
-            self.data = {}
-
-        def clear(self):
-            self.data = {}
-
     REQUEST_CACHE = _RequestCache()
 
     @classmethod
@@ -48,14 +33,7 @@ class TieredCache(object):
         If there is no cache value for the key, returns the CACHE_MISS
         object.
 
-        Note: The CACHE_MISS object avoids the problem where a cache hit that
-        is Falsey is misinterpreted as a cache miss.
-
-        Usage:
-            value = cache.get_value_or_cache_miss(key)
-            if value is CACHE_MISS:
-                value = None  # or any appropriate default
-                ...
+        See README for more details.
 
         Args:
             key (string)
@@ -66,7 +44,7 @@ class TieredCache(object):
         """
         request_cache_value = cls.REQUEST_CACHE.data.get(key, CACHE_MISS)
         if request_cache_value is CACHE_MISS:
-            return cls._get_from_django_cache_and_set_request_cache()
+            return cls._get_from_django_cache_and_set_request_cache(key)
 
         return request_cache_value
 
@@ -126,7 +104,7 @@ class TieredCache(object):
 
     @classmethod
     def _force_django_cache_miss(cls):
-        return cls.REQUEST_CACHE.data['force_django_cache_miss']
+        return cls.REQUEST_CACHE.data.get('force_django_cache_miss', False)
 
 
 class CacheMissError(Exception):

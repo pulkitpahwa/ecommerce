@@ -4,6 +4,7 @@ import logging
 from urllib import unquote, urlencode
 
 import pytz
+import waffle
 from django.conf import settings
 from django.contrib import messages
 from django.db import transaction
@@ -120,6 +121,9 @@ def prepare_basket(request, products, voucher=None):
 
 
 def get_basket_switch_data(product):
+    if waffle.switch_is_active("skip_get_basket_switch_data"):
+        return "dummy", None
+
     structure = product.structure
     switch_link_text = None
 

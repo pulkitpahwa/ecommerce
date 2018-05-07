@@ -3,6 +3,7 @@
 Tests for the request cache.
 """
 import mock
+import pytest
 
 from ecommerce.cache_utils.utils import CACHE_MISS, CacheMissError, TieredCache
 from ecommerce.tests.testcases import TestCase
@@ -10,8 +11,9 @@ from ecommerce.tests.testcases import TestCase
 
 TEST_KEY = "clobert"
 EXPECTED_VALUE = "bertclob"
+TEST_DJANGO_TIMEOUT_CACHE = 1
 
-
+@pytest.mark.django_db
 class TestTieredCache(TestCase):
     """
     Tests for TieredCache.
@@ -41,10 +43,14 @@ class TestTieredCache(TestCase):
         mock_cache_get.return_value = EXPECTED_VALUE
         cached_value = TieredCache.get_value_or_cache_miss(TEST_KEY)
         self.assertEqual(cached_value, CACHE_MISS)
-        self.assertEqual(TieredCache.REQUEST_CACHE.data[TEST_KEY], CACHE_MISS)
+        self.assertFalse(TEST_KEY in TieredCache.REQUEST_CACHE.data)
 
-    def test_set_all_tiers(self):
-        pass
+    @mock.patch('django.core.cache.cache.set')
+    def test_set_all_tiers(self, mock_cache_set):
+        mock_cache_set.return_value = EXPECTED_VALUE
+        TieredCache.set_all_tiers(TEST_KEY, EXPECTED_VALUE, TEST_DJANGO_TIMEOUT_CACHE)
+        mock_cache_set.assert_called_with(TEST_KEY, EXPECTED_VALUE, TEST_DJANGO_TIMEOUT_CACHE)
+        self.assertEqual(TieredCache.REQUEST_CACHE.data[TEST_KEY], EXPECTED_VALUE)
 
 
 class CacheUtilityTests(TestCase):

@@ -160,6 +160,10 @@ class ProgramCourseRunSeatsConditionFactory(ConditionFactory):
         model = ProgramCourseRunSeatsCondition
 
 
+class JournalConditionalFactory(ConditionFactory):  # pylint: disable=function-redefined
+    journal_bundle_uuid = factory.LazyFunction(uuid.uuid4)
+
+
 class ProgramOfferFactory(ConditionalOfferFactory):
     benefit = factory.SubFactory(PercentageDiscountBenefitWithoutRangeFactory)
     condition = factory.SubFactory(ProgramCourseRunSeatsConditionFactory)

@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 import uuid
+import mock
 
 import httpretty
 from oscar.core.loading import get_model
 
 from oscar.test.factories import ConditionalOfferFactory
-from ecommerce.programs.constants import BENEFIT_MAP
+from ecommerce.journal.benefit_constants import BENEFIT_MAP
 from ecommerce.programs.custom import class_path
 from ecommerce.extensions.test.factories import PercentageDiscountBenefitWithoutRangeFactory, ConditionalOfferFactory,\
     JournalConditionalFactory
@@ -17,6 +18,7 @@ ConditionalOffer = get_model('offer', 'ConditionalOffer')
 
 
 class JournalOfferFormTests(TestCase):
+
     def generate_data(self, **kwargs):
         data = {
             'journal_bundle_uuid': uuid.uuid4(),
@@ -26,18 +28,18 @@ class JournalOfferFormTests(TestCase):
         data.update(**kwargs)
         return data
 
-    # def assert_program_offer_conditions(self, offer, program_uuid, expected_benefit_value, expected_benefit_type,
-    #                                     expected_name):
-    #     """ Assert the given offer's parameters match the expected values. """
-    #     self.assertEqual(str(offer.name), expected_name)
-    #     self.assertEqual(offer.offer_type, ConditionalOffer.SITE)
-    #     self.assertEqual(offer.status, ConditionalOffer.OPEN)
-    #     self.assertEqual(offer.max_basket_applications, 1)
-    #     self.assertEqual(offer.site, self.site)
-    #     self.assertEqual(offer.condition.program_uuid, program_uuid)
-    #     self.assertEqual(offer.benefit.proxy_class, class_path(BENEFIT_MAP[expected_benefit_type]))
-    #     self.assertEqual(offer.benefit.value, expected_benefit_value)
-    #
+    def assert_journal_offer_conditions(self, offer, journal_bundle_uuid, expected_benefit_value, expected_benefit_type,
+                                        expected_name):
+        """ Assert the given offer's parameters match the expected values. """
+        self.assertEqual(str(offer.name), expected_name)
+        self.assertEqual(offer.offer_type, ConditionalOffer.SITE)
+        self.assertEqual(offer.status, ConditionalOffer.OPEN)
+        self.assertEqual(offer.max_basket_applications, 1)
+        self.assertEqual(offer.site, self.site)
+        self.assertEqual(offer.condition.journal_bundle_uuid, journal_bundle_uuid)
+        self.assertEqual(offer.benefit.proxy_class, class_path(BENEFIT_MAP[expected_benefit_type]))
+        self.assertEqual(offer.benefit.value, expected_benefit_value)
+
     def assert_form_errors(self, data, expected_errors):
         """ Assert that form validation fails with the expected errors. """
         form = JournalOfferForm(data=data)
@@ -72,7 +74,7 @@ class JournalOfferFormTests(TestCase):
         self.assert_form_errors(data, {'start_datetime': ['The start date must occur before the end date']})
 
     def test_clean_with_conflicting_journal_uuid(self):
-        """ If an offer already exists for the given program, an error should be raised. """
+        """ If an offer already exists for the given journal, an error should be raised. """
         journal_offer = ConditionalOfferFactory(
             benefit=PercentageDiscountBenefitWithoutRangeFactory(),
             condition=JournalConditionalFactory()
@@ -80,75 +82,56 @@ class JournalOfferFormTests(TestCase):
         data = self.generate_data(journal_bundle_uuid=journal_offer.condition.journal_bundle_uuid)
         self.assert_form_errors(data, {'journal_bundle_uuid': ['An offer already exists for this journal bundle']})
 
-    # @httpretty.activate
-    # def test_save_create(self):
-    #     """ A new ConditionalOffer, Benefit, and Condition should be created. """
-    #     data = self.generate_data()
-    #     self.mock_program_detail_endpoint(data['program_uuid'], self.site_configuration.discovery_api_url)
-    #     form = JournalOfferForm(request=self.request, data=data)
-    #     form.is_valid()
-    #     offer = form.save()
-    #     self.assert_program_offer_conditions(offer, data['program_uuid'], data['benefit_value'], data['benefit_type'],
-    #                                          'Discount for the Test Program MicroMockers Program')
-    #
-    # @httpretty.activate
-    # def test_save_create_special_char_title(self):
-    #     """ When the title is international, A new ConditionalOffer, Benefit, and Condition should still be created."""
-    #     data = self.generate_data()
-    #     self.mock_program_detail_endpoint(data['program_uuid'],
-    #                                       self.site_configuration.discovery_api_url,
-    #                                       title=u'Sp\xe1nish Program')
-    #     form = ProgramOfferForm(request=self.request, data=data)
-    #     form.is_valid()
-    #     offer = form.save()
-    #     self.assert_program_offer_conditions(offer, data['program_uuid'], data['benefit_value'], data['benefit_type'],
-    #                                          'Discount for the Spánish Program MicroMockers Program')
-    #
-    # @httpretty.activate
-    # def test_save_edit(self):
-    #     """ Previously-created ConditionalOffer, Benefit, and Condition instances should be updated. """
-    #     offer = factories.ProgramOfferFactory()
-    #     data = self.generate_data(program_uuid=offer.condition.program_uuid, benefit_type=Benefit.FIXED)
-    #     self.mock_program_detail_endpoint(data['program_uuid'], self.site_configuration.discovery_api_url)
-    #     form = ProgramOfferForm(request=self.request, data=data, instance=offer)
-    #     form.is_valid()
-    #     form.save()
-    #
-    #     offer.refresh_from_db()
-    #     self.assert_program_offer_conditions(offer, data['program_uuid'], data['benefit_value'], data['benefit_type'],
-    #                                          'Discount for the Test Program MicroMockers Program')
-    #
-    # @httpretty.activate
-    # def test_save_without_commit(self):
-    #     """ No data should be persisted to the database if the commit kwarg is set to False. """
-    #     data = self.generate_data()
-    #     form = ProgramOfferForm(request=self.request, data=data)
-    #     self.mock_program_detail_endpoint(data['program_uuid'], self.site_configuration.discovery_api_url)
-    #     form.is_valid()
-    #     instance = form.save(commit=False)
-    #     self.assertIsNone(instance.pk)
-    #     self.assertFalse(hasattr(instance, 'benefit'))
-    #     self.assertFalse(hasattr(instance, 'condition'))
-    #
-    # @httpretty.activate
-    # def test_save_offer_name(self):
-    #     """ If a request object is sent, the offer name should include program title and type. """
-    #     data = self.generate_data()
-    #     self.mock_program_detail_endpoint(data['program_uuid'], self.site_configuration.discovery_api_url)
-    #     form = ProgramOfferForm(request=self.request, data=data)
-    #     form.is_valid()
-    #     offer = form.save()
-    #     self.assert_program_offer_conditions(offer, data['program_uuid'], data['benefit_value'], data['benefit_type'],
-    #                                          'Discount for the Test Program MicroMockers Program')
-    #
-    # def test_create_when_conditional_offer_with_uuid_exists(self):
-    #     """
-    #     Verify a program offer can be created if a conditional offer with different type and same uuid already exists.
-    #     """
-    #     data = self.generate_data()
-    #     factories.ProgramOfferFactory(
-    #         condition__program_uuid=data['program_uuid'],
-    #         offer_type=ConditionalOffer.VOUCHER,
-    #     )
-    #     form = ProgramOfferForm(request=self.request, data=data)
-    #     self.assertTrue(form.is_valid())
+    @httpretty.activate
+    @mock.patch('ecommerce.journal.forms.fetch_journal_bundle')
+    def test_save_create(self, mock_discovery_call):
+        """ A new ConditionalOffer, Benefit, and Condition should be created. """
+        mock_discovery_call.return_value = {"title": "test-journal"}
+        data = self.generate_data()
+        form = JournalOfferForm(request=self.request, data=data)
+        form.is_valid()
+        offer = form.save()
+        self.assert_journal_offer_conditions(offer, data['journal_bundle_uuid'], data['benefit_value'],
+                                             data['benefit_type'], 'Journal Bundle Offer: test-journal')
+
+    @httpretty.activate
+    @mock.patch('ecommerce.journal.forms.fetch_journal_bundle')
+    def test_save_edit(self, mock_discovery_call):
+        """ Previously-created ConditionalOffer, Benefit, and Condition instances should be updated. """
+        mock_discovery_call.return_value = {"title": "test-journal"}
+        journal_offer = ConditionalOfferFactory(
+            benefit=PercentageDiscountBenefitWithoutRangeFactory(),
+            condition=JournalConditionalFactory()
+        )
+        data = self.generate_data(journal_bundle_uuid=journal_offer.condition.journal_bundle_uuid, benefit_type=Benefit.FIXED)
+        form = JournalOfferForm(request=self.request, data=data, instance=journal_offer)
+        form.is_valid()
+        form.save()
+
+        journal_offer.refresh_from_db()
+        self.assert_journal_offer_conditions(journal_offer, data['journal_bundle_uuid'], data['benefit_value'],
+                                             data['benefit_type'], 'Journal Bundle Offer: test-journal')
+
+    @httpretty.activate
+    @mock.patch('ecommerce.journal.forms.fetch_journal_bundle')
+    def test_save_without_commit(self, mock_discovery_call):
+        """ No data should be persisted to the database if the commit kwarg is set to False. """
+        mock_discovery_call.return_value = {"title": "test-journal"}
+        data = self.generate_data()
+        form = JournalOfferForm(request=self.request, data=data)
+        form.is_valid()
+        instance = form.save(commit=False)
+        self.assertIsNone(instance)
+
+    def test_create_when_conditional_offer_with_uuid_exists(self):
+        """
+        Verify a journal offer can be created if a conditional offer with different type and same uuid already exists.
+        """
+        data = self.generate_data()
+        journal_offer = ConditionalOfferFactory(
+            benefit=PercentageDiscountBenefitWithoutRangeFactory(),
+            condition__journal_bundle_uuid=data['journal_bundle_uuid'],
+            offer_type=ConditionalOffer.VOUCHER,
+        )
+        form = JournalOfferForm(request=self.request, data=data)
+        self.assertTrue(form.is_valid())

@@ -20,17 +20,22 @@ ConditionalOffer = get_model('offer', 'ConditionalOffer')
 class JournalOfferFormTests(TestCase):
 
     def generate_data(self, **kwargs):
+        """
+        Create data for offer, and update it with the given data.
+        """
         data = {
             'journal_bundle_uuid': uuid.uuid4(),
             'benefit_type': Benefit.PERCENTAGE,
-            'benefit_value': 22,
+            'benefit_value': 2,
         }
         data.update(**kwargs)
         return data
 
-    def assert_journal_offer_conditions(self, offer, journal_bundle_uuid, expected_benefit_value, expected_benefit_type,
-                                        expected_name):
-        """ Assert the given offer's parameters match the expected values. """
+    def _assert_journal_offer_conditions(self, offer, journal_bundle_uuid, expected_benefit_value, expected_benefit_type,
+                                         expected_name):
+        """
+        Assert the given offer's parameters with the expected values.
+        """
         self.assertEqual(str(offer.name), expected_name)
         self.assertEqual(offer.offer_type, ConditionalOffer.SITE)
         self.assertEqual(offer.status, ConditionalOffer.OPEN)
@@ -40,14 +45,18 @@ class JournalOfferFormTests(TestCase):
         self.assertEqual(offer.benefit.proxy_class, class_path(BENEFIT_MAP[expected_benefit_type]))
         self.assertEqual(offer.benefit.value, expected_benefit_value)
 
-    def assert_form_errors(self, data, expected_errors):
-        """ Assert that form validation fails with the expected errors. """
+    def _assert_form_errors(self, data, expected_errors):
+        """
+        Assert that form validation fails with the expected errors.
+        """
         form = JournalOfferForm(data=data)
         self.assertFalse(form.is_valid())
         self.assertEqual(form.errors, expected_errors)
 
     def test_init(self):
-        """ The constructor should pull initial data from the passed-in instance. """
+        """
+        Assert the init data from instance.
+        """
         journal_offer = ConditionalOfferFactory(
             benefit=PercentageDiscountBenefitWithoutRangeFactory(),
             condition=JournalConditionalFactory()
@@ -58,46 +67,58 @@ class JournalOfferFormTests(TestCase):
         self.assertEqual(form['benefit_value'].value(), journal_offer.benefit.value)
 
     def test_clean_percentage(self):
-        """ If a percentage benefit type is specified, the benefit value must never be greater than 100. """
+        """
+        Assert that percentage can not be greater than 100.
+        """
         data = self.generate_data(benefit_type=Benefit.PERCENTAGE, benefit_value=101)
-        self.assert_form_errors(data, {'benefit_value': ['Percentage discounts cannot be greater than 100%.']})
+        self._assert_form_errors(data, {'benefit_value': ['Percentage discounts cannot be greater than 100%.']})
 
     def test_clean_with_missing_start_date(self):
-        """ If an end date is specified, a start date must also be specified. """
-        data = self.generate_data(end_datetime='2017-01-01 00:00:00')
-        self.assert_form_errors(data,
-                                {'start_datetime': ['A start date must be specified when specifying an end date']})
+        """
+        Assert that with end data, start date is required.
+        """
+        data = self.generate_data(end_datetime='2007-02-01 00:00:00')
+        self._assert_form_errors(data,
+                                 {'start_datetime': ['A start date must be specified when specifying an end date']})
 
     def test_clean_with_invalid_date_ordering(self):
-        """ The start date must always occur before the end date. """
-        data = self.generate_data(start_datetime='2017-01-02 00:00:00', end_datetime='2017-01-01 00:00:00')
-        self.assert_form_errors(data, {'start_datetime': ['The start date must occur before the end date']})
+        """
+        Assert that start date should be earlier that end date.
+        """
+        data = self.generate_data(start_datetime='2017-01-02 00:00:00', end_datetime='2007-02-01 00:00:00')
+        self._assert_form_errors(data, {'start_datetime': ['The start date must occur before the end date']})
 
     def test_clean_with_conflicting_journal_uuid(self):
-        """ If an offer already exists for the given journal, an error should be raised. """
+        """
+        Assert that an error should be raised if an offer already exists with same uuid and type.
+        """
         journal_offer = ConditionalOfferFactory(
             benefit=PercentageDiscountBenefitWithoutRangeFactory(),
             condition=JournalConditionalFactory()
         )
         data = self.generate_data(journal_bundle_uuid=journal_offer.condition.journal_bundle_uuid)
-        self.assert_form_errors(data, {'journal_bundle_uuid': ['An offer already exists for this journal bundle']})
+        self._assert_form_errors(data, {'journal_bundle_uuid': ['An offer already exists for this journal bundle']})
 
     @httpretty.activate
     @mock.patch('ecommerce.journal.forms.fetch_journal_bundle')
     def test_save_create(self, mock_discovery_call):
-        """ A new ConditionalOffer, Benefit, and Condition should be created. """
+        """
+        A new ConditionalOffer, Benefit, and Condition should be created.
+        """
         mock_discovery_call.return_value = {"title": "test-journal"}
         data = self.generate_data()
         form = JournalOfferForm(request=self.request, data=data)
         form.is_valid()
         offer = form.save()
-        self.assert_journal_offer_conditions(offer, data['journal_bundle_uuid'], data['benefit_value'],
-                                             data['benefit_type'], 'Journal Bundle Offer: test-journal')
+        self._assert_journal_offer_conditions(offer, data['journal_bundle_uuid'], data['benefit_value'],
+                                              data['benefit_type'], 'Journal Bundle Offer: test-journal')
 
     @httpretty.activate
     @mock.patch('ecommerce.journal.forms.fetch_journal_bundle')
     def test_save_edit(self, mock_discovery_call):
-        """ Previously-created ConditionalOffer, Benefit, and Condition instances should be updated. """
+        """
+        Previously-created ConditionalOffer, Benefit, and Condition instances should be updated.
+        """
         mock_discovery_call.return_value = {"title": "test-journal"}
         journal_offer = ConditionalOfferFactory(
             benefit=PercentageDiscountBenefitWithoutRangeFactory(),
@@ -109,13 +130,15 @@ class JournalOfferFormTests(TestCase):
         form.save()
 
         journal_offer.refresh_from_db()
-        self.assert_journal_offer_conditions(journal_offer, data['journal_bundle_uuid'], data['benefit_value'],
-                                             data['benefit_type'], 'Journal Bundle Offer: test-journal')
+        self._assert_journal_offer_conditions(journal_offer, data['journal_bundle_uuid'], data['benefit_value'],
+                                              data['benefit_type'], 'Journal Bundle Offer: test-journal')
 
     @httpretty.activate
     @mock.patch('ecommerce.journal.forms.fetch_journal_bundle')
     def test_save_without_commit(self, mock_discovery_call):
-        """ No data should be persisted to the database if the commit kwarg is set to False. """
+        """
+        No data should be persisted to the database if the commit kwarg is set to False.
+        """
         mock_discovery_call.return_value = {"title": "test-journal"}
         data = self.generate_data()
         form = JournalOfferForm(request=self.request, data=data)
@@ -128,7 +151,7 @@ class JournalOfferFormTests(TestCase):
         Verify a journal offer can be created if a conditional offer with different type and same uuid already exists.
         """
         data = self.generate_data()
-        journal_offer = ConditionalOfferFactory(
+        ConditionalOfferFactory(
             benefit=PercentageDiscountBenefitWithoutRangeFactory(),
             condition__journal_bundle_uuid=data['journal_bundle_uuid'],
             offer_type=ConditionalOffer.VOUCHER,
